@@ -125,6 +125,14 @@ pyinstaller --windowed --name "BookToText" --icon=icon.icns main.py
 
 The resulting package will be generated inside the `dist/BookToText.app` folder.
 
+### 🚀 Automated Build and Deployment
+To automatically run the test suite, compile the `.app` bundle, and install the latest version to your macOS `/Applications/` directory, use the deployment script:
+```bash
+source venv/bin/activate
+./deploy.py
+```
+This script ensures everything is built safely and notifies you when the installation is complete.
+
 ---
 
 ## 📂 Project Structure
