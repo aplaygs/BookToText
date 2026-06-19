@@ -83,7 +83,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
 
         # === Заголовок ===
         header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        header_frame.pack(fill="x", pady=(0, 15))
+        header_frame.pack(side="top", fill="x", pady=(0, 15))
 
         header = ctk.CTkLabel(
             header_frame,
@@ -117,7 +117,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
             border_width=1,
             border_color="#3A3A3C"
         )
-        self.dnd_frame.pack(fill="x", pady=(0, 15), ipady=15)
+        self.dnd_frame.pack(side="top", fill="x", pady=(0, 15), ipady=15)
         
         self.dnd_label = ctk.CTkLabel(
             self.dnd_frame,
@@ -137,7 +137,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
 
         # === Кнопки выбора ===
         btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        btn_frame.pack(fill="x", pady=(0, 15))
+        btn_frame.pack(side="top", fill="x", pady=(0, 15))
 
         self.btn_files = ctk.CTkButton(
             btn_frame,
@@ -191,67 +191,68 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
         )
         self.file_count_label.pack(side="right", padx=(10, 0))
 
-        # === Очередь файлов ===
-        self.queue_text = ctk.CTkTextbox(
+        # === Кнопка конвертации (пакуется снизу первой) ===
+        self.btn_convert = ctk.CTkButton(
             main_frame,
-            height=160,
-            font=ctk.CTkFont(family="Menlo", size=13),
-            state="disabled",
-            wrap="none",
-            corner_radius=12,
-            fg_color="#1C1C1E",
-            border_width=1,
-            border_color="#333336",
-            text_color="#E5E5EA"
-        )
-        self.queue_text.pack(fill="both", expand=True, pady=(0, 15))
-
-        # === Панель опций ===
-        options_frame = ctk.CTkFrame(
-            main_frame,
-            fg_color="#1C1C1E",
-            corner_radius=12,
-            border_width=1,
-            border_color="#2C2C2E"
-        )
-        options_frame.pack(fill="x", pady=(0, 15), ipady=8)
-
-        format_label = ctk.CTkLabel(
-            options_frame,
-            text="Формат сохранения:",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color="#8E8E93"
-        )
-        format_label.pack(side="left", padx=(15, 10))
-
-        self.format_var = ctk.StringVar(value="txt")
-        self.format_btn = ctk.CTkSegmentedButton(
-            options_frame,
-            values=["txt", "md"],
-            variable=self.format_var,
-            width=120,
-            height=32,
-            fg_color="#2C2C2E",
-            selected_color="#0A84FF",
-            selected_hover_color="#007AFF",
-            text_color="#FFFFFF"
-        )
-        self.format_btn.pack(side="left", padx=(0, 20))
-
-        self.rename_var = ctk.BooleanVar(value=True)
-        self.rename_cb = ctk.CTkCheckBox(
-            options_frame,
-            text="Умное переименование (Автор - Название)",
-            variable=self.rename_var,
-            font=ctk.CTkFont(size=13),
-            text_color="#E5E5EA",
+            text="Конвертировать",
+            command=self._start_conversion,
+            height=44,
+            font=ctk.CTkFont(size=15, weight="bold"),
             fg_color="#0A84FF",
             hover_color="#007AFF",
-            border_color="#8E8E93"
+            text_color="#FFFFFF",
+            corner_radius=8,
         )
-        self.rename_cb.pack(side="left", padx=(20, 15))
+        self.btn_convert.pack(side="bottom", fill="x", pady=(10, 0))
 
-        # === Папка сохранения ===
+        # === Лог ошибок (пакуется снизу вторым) ===
+        self.log_text = ctk.CTkTextbox(
+            main_frame,
+            height=80,
+            font=ctk.CTkFont(family="Menlo", size=11),
+            state="disabled",
+            wrap="word",
+            corner_radius=12,
+            fg_color="#1A1A1C",
+            border_width=1,
+            border_color="#2C2C2E",
+            text_color="#AEAEB2"
+        )
+        self.log_text.pack(side="bottom", fill="x", pady=(0, 15))
+
+        # === Строка статуса (пакуется снизу третьей) ===
+        self.status_label = ctk.CTkLabel(
+            main_frame,
+            text="Готово к работе. Перетащите файлы или выберите их вручную.",
+            font=ctk.CTkFont(size=13),
+            text_color="#8E8E93",
+        )
+        self.status_label.pack(side="bottom", anchor="w", pady=(0, 10))
+
+        # === Прогресс-бар (пакуется снизу четвертым) ===
+        progress_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        progress_frame.pack(side="bottom", fill="x", pady=(5, 10))
+
+        self.progress_bar = ctk.CTkProgressBar(
+            progress_frame,
+            height=8,
+            corner_radius=4,
+            progress_color="#0A84FF",
+            fg_color="#3A3A3C"
+        )
+        self.progress_bar.pack(fill="x", side="left", expand=True, padx=(0, 15))
+        self.progress_bar.set(0)
+
+        self.progress_label = ctk.CTkLabel(
+            progress_frame,
+            text="0%",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#8E8E93",
+            width=40,
+        )
+        self.progress_label.pack(side="right")
+
+        # === Папка сохранения (пакуется снизу пятой) ===
         save_frame = ctk.CTkFrame(
             main_frame,
             fg_color="#1C1C1E",
@@ -259,7 +260,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
             border_width=1,
             border_color="#2C2C2E"
         )
-        save_frame.pack(fill="x", pady=(0, 15), ipady=8)
+        save_frame.pack(side="bottom", fill="x", pady=(0, 15), ipady=8)
 
         self.save_to_source_var = ctk.BooleanVar(value=True)
         self.save_mode_cb = ctk.CTkCheckBox(
@@ -297,65 +298,65 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
         )
         self.lbl_save_dir.pack(side="left", fill="x", expand=True, padx=(0, 15))
 
-        # === Прогресс-бар ===
-        progress_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        progress_frame.pack(fill="x", pady=(5, 10))
-
-        self.progress_bar = ctk.CTkProgressBar(
-            progress_frame,
-            height=8,
-            corner_radius=4,
-            progress_color="#0A84FF",
-            fg_color="#3A3A3C"
-        )
-        self.progress_bar.pack(fill="x", side="left", expand=True, padx=(0, 15))
-        self.progress_bar.set(0)
-
-        self.progress_label = ctk.CTkLabel(
-            progress_frame,
-            text="0%",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color="#8E8E93",
-            width=40,
-        )
-        self.progress_label.pack(side="right")
-
-        self.status_label = ctk.CTkLabel(
+        # === Панель опций (пакуется снизу шестой) ===
+        options_frame = ctk.CTkFrame(
             main_frame,
-            text="Готово к работе. Перетащите файлы или выберите их вручную.",
-            font=ctk.CTkFont(size=13),
-            text_color="#8E8E93",
-        )
-        self.status_label.pack(anchor="w", pady=(0, 10))
-
-        # === Лог ошибок ===
-        self.log_text = ctk.CTkTextbox(
-            main_frame,
-            height=80,
-            font=ctk.CTkFont(family="Menlo", size=11),
-            state="disabled",
-            wrap="word",
+            fg_color="#1C1C1E",
             corner_radius=12,
-            fg_color="#1A1A1C",
             border_width=1,
-            border_color="#2C2C2E",
-            text_color="#AEAEB2"
+            border_color="#2C2C2E"
         )
-        self.log_text.pack(fill="x", pady=(0, 15))
+        options_frame.pack(side="bottom", fill="x", pady=(0, 15), ipady=8)
 
-        # === Кнопка конвертации ===
-        self.btn_convert = ctk.CTkButton(
-            main_frame,
-            text="Конвертировать",
-            command=self._start_conversion,
-            height=44,
-            font=ctk.CTkFont(size=15, weight="bold"),
+        format_label = ctk.CTkLabel(
+            options_frame,
+            text="Формат сохранения:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#8E8E93"
+        )
+        format_label.pack(side="left", padx=(15, 10))
+
+        self.format_var = ctk.StringVar(value="txt")
+        self.format_btn = ctk.CTkSegmentedButton(
+            options_frame,
+            values=["txt", "md"],
+            variable=self.format_var,
+            width=120,
+            height=32,
+            fg_color="#2C2C2E",
+            selected_color="#0A84FF",
+            selected_hover_color="#007AFF",
+            text_color="#FFFFFF"
+        )
+        self.format_btn.pack(side="left", padx=(0, 20))
+
+        self.rename_var = ctk.BooleanVar(value=True)
+        self.rename_cb = ctk.CTkCheckBox(
+            options_frame,
+            text="Умное переименование (Автор - Название)",
+            variable=self.rename_var,
+            font=ctk.CTkFont(size=13),
+            text_color="#E5E5EA",
             fg_color="#0A84FF",
             hover_color="#007AFF",
-            text_color="#FFFFFF",
-            corner_radius=8,
+            border_color="#8E8E93"
         )
-        self.btn_convert.pack(fill="x", pady=(10, 0))
+        self.rename_cb.pack(side="left", padx=(20, 15))
+
+        # === Очередь файлов (заполняет всё оставшееся пространство посередине) ===
+        self.queue_text = ctk.CTkTextbox(
+            main_frame,
+            height=160,
+            font=ctk.CTkFont(family="Menlo", size=13),
+            state="disabled",
+            wrap="none",
+            corner_radius=12,
+            fg_color="#1C1C1E",
+            border_width=1,
+            border_color="#333336",
+            text_color="#E5E5EA"
+        )
+        self.queue_text.pack(side="top", fill="both", expand=True, pady=(0, 15))
 
     def _toggle_save_mode(self):
         if self.save_to_source_var.get():
