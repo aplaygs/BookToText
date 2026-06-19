@@ -1,7 +1,7 @@
 from pypdf import PdfReader
 
 
-def convert_pdf(file_path: str) -> str:
+def convert_pdf(file_path: str, format_mode: str = 'txt') -> str:
     """Конвертация PDF в текст. Постраничная обработка для экономии памяти."""
     reader = PdfReader(file_path)
     texts = []

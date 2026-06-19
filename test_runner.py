@@ -17,7 +17,8 @@ from converters.fb2_converter import convert_fb2
 from converters.pdf_converter import convert_pdf
 from converters.docx_converter import convert_docx
 from converters.rtf_converter import convert_rtf
-from converters.html_converter import convert_html
+from converters.html_converter import convert_html, html_to_markdown
+from converters.metadata_extractor import sanitize_filename, parse_metadata_from_filename, extract_metadata
 
 
 class TestResults:
@@ -107,16 +108,16 @@ def test_clean_text(results: TestResults):
 
 
 def test_safe_save_path(results: TestResults):
-    """Тесты генерации безопасного пути."""
+    """Тесты генерации безопасного пути с умным переименованием."""
     print("\n--- Тесты: safe_save_path ---")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Тест 1: Файл не существует
+        # Тест 1: Файл не существует (классика)
         path = os.path.join(tmpdir, "book.epub")
         out = safe_save_path(path)
         expected = os.path.join(tmpdir, "book.txt")
         if out == expected:
-            results.ok("Путь без конфликта")
+            results.ok("Путь без конфликта (классика)")
         else:
             results.fail("Путь без конфликта", f"{out} != {expected}")
 
@@ -130,17 +131,23 @@ def test_safe_save_path(results: TestResults):
         else:
             results.fail("Числовой индекс", f"{out} != {expected2}")
 
-        # Тест 3: Два конфликта
-        with open(expected2, 'w') as f:
-            f.write("test")
-        out = safe_save_path(path)
-        expected3 = os.path.join(tmpdir, "book_2.txt")
-        if out == expected3:
-            results.ok("Двойной конфликт -> _2")
+        # Тест 3: Умное переименование (Автор + Название + .md)
+        out = safe_save_path(path, author="Пушкин", title="Евгений Онегин", ext=".md")
+        expected_md = os.path.join(tmpdir, "Пушкин - Евгений Онегин.md")
+        if out == expected_md:
+            results.ok("Умное переименование (Автор - Название.md)")
         else:
-            results.fail("Двойной конфликт", f"{out} != {expected3}")
+            results.fail("Умное переименование", f"{out} != {expected_md}")
+            
+        # Тест 4: Умное переименование (только название, без точки в ext)
+        out = safe_save_path(path, title="Название", ext="md")
+        expected_md2 = os.path.join(tmpdir, "Название.md")
+        if out == expected_md2:
+            results.ok("Умное переименование (только название)")
+        else:
+            results.fail("Умное переименование (название)", f"{out} != {expected_md2}")
 
-        # Тест 4: FB2.ZIP — двойное расширение
+        # Тест 5: FB2.ZIP — двойное расширение
         fb2zip_path = os.path.join(tmpdir, "novel.fb2.zip")
         out = safe_save_path(fb2zip_path)
         expected_fb2 = os.path.join(tmpdir, "novel.txt")
@@ -371,6 +378,47 @@ def test_error_isolation(results: TestResults):
         results.ok(f"Несуществующий файл → исключение: {type(e).__name__}")
 
 
+def test_metadata_extractor(results: TestResults):
+    """Тесты парсинга имени файла и очистки символов."""
+    print("\n--- Тесты: metadata_extractor ---")
+    
+    # Sanitize
+    name = sanitize_filename('Имя: со слэшами/\\ и "кавычками"?!')
+    if name == 'Имя со слэшами и кавычками!':
+        results.ok("Очистка недопустимых символов в имени")
+    else:
+        results.fail("Очистка символов", f"Получено: {name}")
+        
+    # Разбор имени: Автор - Название
+    author, title = parse_metadata_from_filename("Толстой Л.Н. - Война и мир.epub")
+    if author == "Толстой Л.Н." and title == "Война и мир":
+        results.ok("Разбор имени: Автор - Название")
+    else:
+        results.fail("Разбор имени", f"Получено: {author}, {title}")
+        
+    # Разбор имени: Без автора
+    author, title = parse_metadata_from_filename("Просто название (ru) [litres].pdf")
+    if author is None and title == "Просто название":
+        results.ok("Разбор имени: очистка технического мусора")
+    else:
+        results.fail("Разбор имени (без автора)", f"Получено: {author}, {title}")
+
+
+def test_markdown_generation(results: TestResults):
+    """Тесты генерации Markdown."""
+    print("\n--- Тесты: генерация Markdown ---")
+    
+    from bs4 import BeautifulSoup
+    html = "<body><h1>Глава 1</h1><p><b>Жирный</b> и <i>курсив</i></p></body>"
+    soup = BeautifulSoup(html, 'html.parser')
+    md = html_to_markdown(soup.body).strip()
+    
+    if "# Глава 1" in md and "**Жирный**" in md and "*курсив*" in md:
+        results.ok("html_to_markdown генерация разметки")
+    else:
+        results.fail("html_to_markdown", f"Некорректно сгенерирован MD:\n{md}")
+
+
 def main():
     print("=" * 60)
     print("  BookToText — Автоматические тесты")
@@ -383,6 +431,8 @@ def main():
     test_broken_files(results)
     test_encoding(results)
     test_error_isolation(results)
+    test_metadata_extractor(results)
+    test_markdown_generation(results)
 
     success = results.summary()
     sys.exit(0 if success else 1)

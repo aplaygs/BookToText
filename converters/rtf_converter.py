@@ -1,7 +1,7 @@
 from striprtf.striprtf import rtf_to_text
 
 
-def convert_rtf(file_path: str) -> str:
+def convert_rtf(file_path: str, format_mode: str = 'txt') -> str:
     """Конвертация RTF в текст."""
     with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
         rtf_content = f.read()

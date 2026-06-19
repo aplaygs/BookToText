@@ -17,6 +17,7 @@ from converters.docx_converter import convert_docx
 from converters.mobi_converter import convert_mobi
 from converters.rtf_converter import convert_rtf
 from converters.html_converter import convert_html
+from converters.metadata_extractor import extract_metadata
 
 # Поддерживаемые расширения
 SUPPORTED_EXTENSIONS = {
@@ -201,7 +202,52 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
             border_color="#333336",
             text_color="#E5E5EA"
         )
-        self.queue_text.pack(fill="both", expand=True, pady=(0, 10))
+        self.queue_text.pack(fill="both", expand=True, pady=(0, 15))
+
+        # === Панель опций ===
+        options_frame = ctk.CTkFrame(
+            main_frame,
+            fg_color="#1C1C1E",
+            corner_radius=12,
+            border_width=1,
+            border_color="#2C2C2E"
+        )
+        options_frame.pack(fill="x", pady=(0, 15), ipady=8)
+
+        format_label = ctk.CTkLabel(
+            options_frame,
+            text="Формат сохранения:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#8E8E93"
+        )
+        format_label.pack(side="left", padx=(15, 10))
+
+        self.format_var = ctk.StringVar(value="txt")
+        self.format_btn = ctk.CTkSegmentedButton(
+            options_frame,
+            values=["txt", "md"],
+            variable=self.format_var,
+            width=120,
+            height=32,
+            fg_color="#2C2C2E",
+            selected_color="#0A84FF",
+            selected_hover_color="#007AFF",
+            text_color="#FFFFFF"
+        )
+        self.format_btn.pack(side="left", padx=(0, 20))
+
+        self.rename_var = ctk.BooleanVar(value=True)
+        self.rename_cb = ctk.CTkCheckBox(
+            options_frame,
+            text="Умное переименование (Автор - Название)",
+            variable=self.rename_var,
+            font=ctk.CTkFont(size=13),
+            text_color="#E5E5EA",
+            fg_color="#0A84FF",
+            hover_color="#007AFF",
+            border_color="#8E8E93"
+        )
+        self.rename_cb.pack(side="left", padx=(20, 15))
 
         # === Прогресс-бар ===
         progress_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
@@ -431,6 +477,10 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
         total = len(self.file_queue)
         success = 0
         errors = 0
+        
+        format_mode = self.format_var.get()
+        use_smart_rename = self.rename_var.get()
+        ext = f".{format_mode}"
 
         for idx, file_path in enumerate(self.file_queue):
             basename = os.path.basename(file_path)
@@ -456,12 +506,19 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
                 if converter is None:
                     raise ValueError(f"Формат не поддерживается: {basename}")
 
+                # Извлечение метаданных (если включено переименование)
+                author, title = None, None
+                if use_smart_rename:
+                    self.after(0, self._set_status, f"⏳  [{idx+1}/{total}] Извлечение метаданных: {basename}")
+                    author, title = extract_metadata(file_path)
+
                 # Конвертация
-                raw_text = converter(file_path)
+                self.after(0, self._set_status, f"⏳  [{idx+1}/{total}] Конвертация: {basename}")
+                raw_text = converter(file_path, format_mode=format_mode)
                 cleaned = clean_text(raw_text)
 
                 # Сохранение
-                save_path = safe_save_path(file_path)
+                save_path = safe_save_path(file_path, author=author, title=title, ext=ext)
                 with open(save_path, 'w', encoding='utf-8') as out:
                     out.write(cleaned)
 
