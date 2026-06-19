@@ -7,6 +7,7 @@ import sys
 import threading
 from tkinter import filedialog, END
 import customtkinter as ctk
+from tkinterdnd2 import TkinterDnD, DND_FILES
 
 from converters.text_cleaner import clean_text, safe_save_path
 from converters.epub_converter import convert_epub
@@ -49,18 +50,20 @@ FORMAT_DESCRIPTIONS = {
 }
 
 
-class BookToTextApp(ctk.CTk):
+class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
     """Главное окно приложения."""
 
     def __init__(self):
         super().__init__()
+        self.TkdndVersion = TkinterDnD._require(self)
 
-        # Настройки окна
+        # Настройки окна (Liquid Glass дизайн)
         self.title("BookToText — Конвертер книг в текст")
-        self.geometry("820x700")
-        self.minsize(720, 600)
+        self.geometry("820x760")
+        self.minsize(720, 700)
         ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        
+        self.configure(fg_color="#121213")
 
         self.file_queue: list[str] = []
         self._is_converting = False
@@ -69,172 +72,232 @@ class BookToTextApp(ctk.CTk):
         self._build_ui()
 
     def _build_ui(self):
-        """Построение интерфейса."""
+        """Построение интерфейса в стиле Liquid Glass."""
 
         # === Основной контейнер ===
         main_frame = ctk.CTkFrame(self, fg_color="transparent")
-        main_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        main_frame.pack(fill="both", expand=True, padx=25, pady=20)
 
         # === Заголовок ===
         header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        header_frame.pack(fill="x", pady=(8, 0))
+        header_frame.pack(fill="x", pady=(0, 15))
 
         header = ctk.CTkLabel(
             header_frame,
-            text="📚  BookToText",
-            font=ctk.CTkFont(size=30, weight="bold"),
+            text="📚 BookToText",
+            font=ctk.CTkFont(size=34, weight="bold"),
+            text_color="#FFFFFF",
         )
         header.pack(anchor="w")
 
         subtitle = ctk.CTkLabel(
             header_frame,
             text="Конвертер электронных книг и документов в чистый текст (.txt, UTF-8)",
-            font=ctk.CTkFont(size=13),
-            text_color="#888",
+            font=ctk.CTkFont(size=14),
+            text_color="#8E8E93",
         )
         subtitle.pack(anchor="w", pady=(2, 0))
 
-        # Форматы — компактная строка
-        formats_text = "Форматы:  " + "  •  ".join([
-            "EPUB", "FB2", "PDF", "DOCX", "MOBI/AZW3", "RTF", "HTML"
-        ])
         formats_label = ctk.CTkLabel(
             header_frame,
-            text=formats_text,
-            font=ctk.CTkFont(size=11),
-            text_color="#666",
+            text="Форматы:  EPUB  •  FB2  •  PDF  •  DOCX  •  MOBI/AZW3  •  RTF  •  HTML",
+            font=ctk.CTkFont(size=12),
+            text_color="#636366",
         )
-        formats_label.pack(anchor="w", pady=(2, 10))
+        formats_label.pack(anchor="w", pady=(4, 0))
+
+        # === Drag & Drop Area ===
+        self.dnd_frame = ctk.CTkFrame(
+            main_frame, 
+            fg_color="#1C1C1E", 
+            corner_radius=16,
+            border_width=1,
+            border_color="#3A3A3C"
+        )
+        self.dnd_frame.pack(fill="x", pady=(0, 15), ipady=15)
+        
+        self.dnd_label = ctk.CTkLabel(
+            self.dnd_frame,
+            text="📥 Перетащите файлы или папки сюда",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#8E8E93"
+        )
+        self.dnd_label.pack(expand=True, pady=25)
+
+        self.dnd_frame.drop_target_register(DND_FILES)
+        self.dnd_frame.dnd_bind('<<Drop>>', self._on_drop)
+        self.dnd_frame.dnd_bind('<<DragEnter>>', self._on_drag_enter)
+        self.dnd_frame.dnd_bind('<<DragLeave>>', self._on_drag_leave)
+
+        self.dnd_label.drop_target_register(DND_FILES)
+        self.dnd_label.dnd_bind('<<Drop>>', self._on_drop)
 
         # === Кнопки выбора ===
         btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        btn_frame.pack(fill="x", pady=(0, 8))
+        btn_frame.pack(fill="x", pady=(0, 15))
 
         self.btn_files = ctk.CTkButton(
             btn_frame,
-            text="📄  Выбрать файлы",
+            text="📄 Выбрать файлы",
             command=self._select_files,
-            width=190,
+            width=180,
             height=40,
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="#2C2C2E",
+            hover_color="#3A3A3C",
+            text_color="#FFFFFF",
             corner_radius=10,
         )
         self.btn_files.pack(side="left", padx=(0, 10))
 
         self.btn_folder = ctk.CTkButton(
             btn_frame,
-            text="📁  Выбрать папку",
+            text="📁 Выбрать папку",
             command=self._select_folder,
-            width=190,
+            width=180,
             height=40,
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="#2C2C2E",
+            hover_color="#3A3A3C",
+            text_color="#FFFFFF",
             corner_radius=10,
         )
         self.btn_folder.pack(side="left", padx=(0, 10))
 
         self.btn_clear = ctk.CTkButton(
             btn_frame,
-            text="🗑  Очистить",
+            text="🗑 Очистить",
             command=self._clear_queue,
-            width=130,
+            width=120,
             height=40,
             font=ctk.CTkFont(size=14),
-            fg_color="#444",
-            hover_color="#666",
+            fg_color="transparent",
+            border_width=1,
+            border_color="#48484A",
+            hover_color="#3A3A3C",
+            text_color="#FF453A",
             corner_radius=10,
         )
         self.btn_clear.pack(side="left")
 
-        # Счётчик файлов — справа
         self.file_count_label = ctk.CTkLabel(
             btn_frame,
             text="0 файлов",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color="#aaa",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#8E8E93",
         )
         self.file_count_label.pack(side="right", padx=(10, 0))
 
-        # === Текстовое поле — очередь ===
-        queue_label = ctk.CTkLabel(
-            main_frame,
-            text="Очередь файлов:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color="#999",
-        )
-        queue_label.pack(anchor="w", pady=(4, 2))
-
+        # === Очередь файлов ===
         self.queue_text = ctk.CTkTextbox(
             main_frame,
-            height=200,
-            font=ctk.CTkFont(family="Menlo", size=12),
+            height=160,
+            font=ctk.CTkFont(family="Menlo", size=13),
             state="disabled",
             wrap="none",
-            corner_radius=8,
+            corner_radius=12,
+            fg_color="#1C1C1E",
+            border_width=1,
+            border_color="#333336",
+            text_color="#E5E5EA"
         )
-        self.queue_text.pack(fill="both", expand=True, pady=(0, 8))
+        self.queue_text.pack(fill="both", expand=True, pady=(0, 10))
 
         # === Прогресс-бар ===
         progress_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        progress_frame.pack(fill="x", pady=(0, 4))
+        progress_frame.pack(fill="x", pady=(5, 10))
 
         self.progress_bar = ctk.CTkProgressBar(
             progress_frame,
-            height=12,
-            corner_radius=6,
+            height=8,
+            corner_radius=4,
+            progress_color="#0A84FF",
+            fg_color="#3A3A3C"
         )
-        self.progress_bar.pack(fill="x", side="left", expand=True, padx=(0, 10))
+        self.progress_bar.pack(fill="x", side="left", expand=True, padx=(0, 15))
         self.progress_bar.set(0)
 
         self.progress_label = ctk.CTkLabel(
             progress_frame,
             text="0%",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color="#aaa",
-            width=45,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#8E8E93",
+            width=40,
         )
         self.progress_label.pack(side="right")
 
-        # === Строка статуса ===
         self.status_label = ctk.CTkLabel(
             main_frame,
-            text="✅  Готово к работе. Добавьте файлы для конвертации.",
-            font=ctk.CTkFont(size=12),
-            text_color="#888",
+            text="Готово к работе. Перетащите файлы или выберите их вручную.",
+            font=ctk.CTkFont(size=13),
+            text_color="#8E8E93",
         )
-        self.status_label.pack(anchor="w", pady=(0, 4))
+        self.status_label.pack(anchor="w", pady=(0, 10))
 
-        # === Лог ошибок (сворачиваемый) ===
-        log_label = ctk.CTkLabel(
-            main_frame,
-            text="Лог обработки:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color="#999",
-        )
-        log_label.pack(anchor="w", pady=(4, 2))
-
+        # === Лог ошибок ===
         self.log_text = ctk.CTkTextbox(
             main_frame,
             height=80,
             font=ctk.CTkFont(family="Menlo", size=11),
             state="disabled",
             wrap="word",
-            corner_radius=8,
+            corner_radius=12,
+            fg_color="#1A1A1C",
+            border_width=1,
+            border_color="#2C2C2E",
+            text_color="#AEAEB2"
         )
-        self.log_text.pack(fill="x", pady=(0, 10))
+        self.log_text.pack(fill="x", pady=(0, 15))
 
         # === Кнопка конвертации ===
         self.btn_convert = ctk.CTkButton(
             main_frame,
-            text="▶   Конвертировать",
+            text="Конвертировать",
             command=self._start_conversion,
-            width=300,
-            height=48,
-            font=ctk.CTkFont(size=17, weight="bold"),
-            fg_color="#1a8f3c",
-            hover_color="#23b44d",
+            height=50,
+            font=ctk.CTkFont(size=18, weight="bold"),
+            fg_color="#0A84FF",
+            hover_color="#007AFF",
+            text_color="#FFFFFF",
             corner_radius=12,
         )
-        self.btn_convert.pack(pady=(0, 10))
+        self.btn_convert.pack(fill="x")
+
+    def _on_drag_enter(self, event):
+        """Подсветка зоны при перетаскивании."""
+        self.dnd_frame.configure(border_color="#0A84FF", fg_color="#2C2C2E")
+        self.dnd_label.configure(text_color="#0A84FF")
+
+    def _on_drag_leave(self, event):
+        """Возврат цвета при уходе курсора."""
+        self.dnd_frame.configure(border_color="#3A3A3C", fg_color="#1C1C1E")
+        self.dnd_label.configure(text_color="#8E8E93")
+
+    def _on_drop(self, event):
+        """Обработка сброшенных файлов."""
+        self._on_drag_leave(event)
+        if event.data:
+            # Разбиваем строку путей через Tcl list parser (поддержка пробелов)
+            paths = self.tk.splitlist(event.data)
+            valid_paths = []
+            all_exts = set(SUPPORTED_EXTENSIONS.keys())
+            for path in paths:
+                if os.path.isdir(path):
+                    for root, dirs, files in os.walk(path):
+                        for fname in files:
+                            fpath = os.path.join(root, fname)
+                            flow = fname.lower()
+                            if flow.endswith(FB2_ZIP_PATTERN) or os.path.splitext(flow)[1] in all_exts:
+                                valid_paths.append(fpath)
+                else:
+                    flow = path.lower()
+                    if flow.endswith(FB2_ZIP_PATTERN) or os.path.splitext(flow)[1] in all_exts:
+                        valid_paths.append(path)
+            
+            if valid_paths:
+                self._add_to_queue(valid_paths)
+            else:
+                self._set_status("⚠️  В перетащенных данных нет поддерживаемых файлов.")
 
     # ─── Выбор файлов ───
     def _select_files(self):
