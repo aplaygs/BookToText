@@ -419,6 +419,62 @@ def test_markdown_generation(results: TestResults):
         results.fail("html_to_markdown", f"Некорректно сгенерирован MD:\n{md}")
 
 
+def test_advanced_parsers(results: TestResults):
+    """Тесты улучшенных конвертеров."""
+    print("\n--- Тесты: Продвинутые конвертеры ---")
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Тест: PDF hyphens
+        from converters.pdf_converter import clean_pdf_hyphens
+        cleaned = clean_pdf_hyphens("инте-\nресный")
+        if cleaned == "интересный":
+            results.ok("Удаление переносов строк (PDF)")
+        else:
+            results.fail("Удаление переносов (PDF)", f"Получено: {cleaned}")
+            
+        # Тест: FB2 poem
+        from converters.fb2_converter import _parse_fb2_content
+        fb2_xml = """<?xml version="1.0" encoding="utf-8"?>
+        <FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0">
+            <body><poem><stanza><v>Стих 1</v><v>Стих 2</v></stanza></poem></body>
+        </FictionBook>
+        """.encode('utf-8')
+        md_text = _parse_fb2_content(fb2_xml, format_mode='md')
+        if "> Стих 1" in md_text and "> Стих 2" in md_text:
+            results.ok("FB2: Парсинг poem и stanza")
+        else:
+            results.fail("FB2: Парсинг poem", f"Получено: {md_text}")
+            
+        # Тест: DOCX table and list
+        from docx import Document
+        docx_path = os.path.join(tmpdir, "test.docx")
+        doc = Document()
+        doc.add_paragraph("List item", style="List Bullet")
+        table = doc.add_table(rows=1, cols=2)
+        cells = table.rows[0].cells
+        cells[0].text = "Cell 1"
+        cells[1].text = "Cell 2"
+        doc.save(docx_path)
+        
+        from converters.docx_converter import convert_docx
+        md_text = convert_docx(docx_path, format_mode='md')
+        if "- List item" in md_text and "| Cell 1 | Cell 2 |" in md_text:
+            results.ok("DOCX: Парсинг списков и таблиц")
+        else:
+            results.fail("DOCX: Парсинг", f"Получено: {md_text}")
+            
+        # Тест: Кодировка CP1251
+        from converters.html_converter import convert_html
+        html_path = os.path.join(tmpdir, "test_cp1251.html")
+        with open(html_path, 'wb') as f:
+            f.write("<html><body><p>Привет, мир! Это довольно длинное сообщение на русском языке для определения кодировки.</p></body></html>".encode('cp1251'))
+        text = convert_html(html_path)
+        if "Привет" in text and "сообщение" in text:
+            results.ok("HTML: Автоопределение кодировки CP1251")
+        else:
+            results.fail("HTML: Автоопределение кодировки", f"Получено: {text}")
+
+
 def main():
     print("=" * 60)
     print("  BookToText — Автоматические тесты")
@@ -433,6 +489,7 @@ def main():
     test_error_isolation(results)
     test_metadata_extractor(results)
     test_markdown_generation(results)
+    test_advanced_parsers(results)
 
     success = results.summary()
     sys.exit(0 if success else 1)

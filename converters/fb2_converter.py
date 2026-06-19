@@ -104,6 +104,42 @@ def parse_fb2_node(node, ns, format_mode='txt', title_level=1) -> str:
             return f"\n\n" + "\n".join(quoted) + "\n\n"
         return f"\n{text}\n"
 
+    elif tag_name in ('poem', 'cite'):
+        texts = []
+        for child in node:
+            child_text = parse_fb2_node(child, ns, format_mode, title_level)
+            if child_text:
+                texts.append(child_text)
+            if child.tail and child.tail.strip():
+                texts.append(child.tail.strip())
+        text = "".join(texts)
+        if format_mode == 'md':
+            lines = text.split('\n')
+            quoted = [f"> {line}" for line in lines if line.strip()]
+            return f"\n\n" + "\n".join(quoted) + "\n\n"
+        return f"\n{text}\n"
+
+    elif tag_name == 'stanza':
+        texts = []
+        for child in node:
+            child_text = parse_fb2_node(child, ns, format_mode, title_level)
+            if child_text:
+                texts.append(child_text)
+            if child.tail and child.tail.strip():
+                texts.append(child.tail.strip())
+        return "\n".join(texts) + "\n\n"
+
+    elif tag_name == 'v':
+        text = ""
+        for child in node:
+            text += parse_fb2_node(child, ns, format_mode, title_level)
+            if child.tail:
+                text += child.tail
+        if node.text:
+            text = node.text + text
+        text = text.strip()
+        return f"{text}\n"
+
     # Обработка других тегов (body, empty-line, poem и т.д.)
     texts = []
     if node.text and node.text.strip():
@@ -118,7 +154,7 @@ def parse_fb2_node(node, ns, format_mode='txt', title_level=1) -> str:
     return "".join(texts)
 
 
-def _parse_fb2_content(xml_content: bytes, format_mode: str = 'txt') -> str:
+def _parse_fb2_content(xml_content: bytes, format_mode: str = 'txt', cancel_event=None) -> str:
     """Парсинг содержимого FB2 XML."""
     try:
         root = ET.fromstring(xml_content)
@@ -133,7 +169,8 @@ def _parse_fb2_content(xml_content: bytes, format_mode: str = 'txt') -> str:
     texts = []
     # Извлекаем текст только из элементов body (пропуская description/метаданные)
     for body in root.iter(f'{ns}body'):
-        # Если есть name="notes", можно пропустить или оставить (оставим для полноты)
+        if cancel_event and cancel_event.is_set():
+            raise InterruptedError("Отменено пользователем")
         body_text = parse_fb2_node(body, ns, format_mode, title_level=1)
         if body_text.strip():
             texts.append(body_text.strip())
@@ -141,6 +178,8 @@ def _parse_fb2_content(xml_content: bytes, format_mode: str = 'txt') -> str:
     if not texts:
         # Fallback: извлекаем весь текст из body как плоский
         for body in root.iter(f'{ns}body'):
+            if cancel_event and cancel_event.is_set():
+                raise InterruptedError("Отменено пользователем")
             body_text = ''.join(body.itertext()).strip()
             if body_text:
                 texts.append(body_text)
@@ -148,7 +187,7 @@ def _parse_fb2_content(xml_content: bytes, format_mode: str = 'txt') -> str:
     return '\n\n'.join(texts)
 
 
-def convert_fb2(file_path: str, format_mode: str = 'txt') -> str:
+def convert_fb2(file_path: str, format_mode: str = 'txt', cancel_event=None) -> str:
     """Конвертация FB2 или FB2.ZIP в текст или Markdown."""
     ext = os.path.splitext(file_path)[1].lower()
     
@@ -157,9 +196,9 @@ def convert_fb2(file_path: str, format_mode: str = 'txt') -> str:
             for name in zf.namelist():
                 if name.lower().endswith('.fb2'):
                     content = zf.read(name)
-                    return _parse_fb2_content(content, format_mode)
+                    return _parse_fb2_content(content, format_mode, cancel_event)
         raise ValueError("Архив не содержит файлов .fb2")
     else:
         with open(file_path, 'rb') as f:
             content = f.read()
-        return _parse_fb2_content(content, format_mode)
+        return _parse_fb2_content(content, format_mode, cancel_event)

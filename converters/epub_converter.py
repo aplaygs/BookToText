@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from .html_converter import html_to_markdown
 
 
-def convert_epub(file_path: str, format_mode: str = 'txt') -> str:
+def convert_epub(file_path: str, format_mode: str = 'txt', cancel_event=None) -> str:
     """Конвертация EPUB в текст или Markdown с сохранением порядка глав."""
     import warnings
     with warnings.catch_warnings():
@@ -19,6 +19,8 @@ def convert_epub(file_path: str, format_mode: str = 'txt') -> str:
     processed_ids = set()
     
     def process_item(item):
+        if cancel_event and cancel_event.is_set():
+            raise InterruptedError("Отменено пользователем")
         soup = BeautifulSoup(item.get_content(), 'html.parser')
         if format_mode == 'md':
             body = soup.body if soup.body else soup

@@ -5,6 +5,7 @@
 import os
 import sys
 import threading
+import concurrent.futures
 from tkinter import filedialog, END
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD, DND_FILES
@@ -60,8 +61,8 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
 
         # Настройки окна (Liquid Glass дизайн)
         self.title("BookToText — Конвертер книг в текст")
-        self.geometry("820x760")
-        self.minsize(720, 700)
+        self.geometry("820x820")
+        self.minsize(720, 750)
         ctk.set_appearance_mode("dark")
         
         self.configure(fg_color="#121213")
@@ -69,6 +70,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
         self.file_queue: list[str] = []
         self._is_converting = False
         self._conversion_log: list[str] = []
+        self.cancel_event = threading.Event()
 
         self._build_ui()
 
@@ -249,6 +251,52 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
         )
         self.rename_cb.pack(side="left", padx=(20, 15))
 
+        # === Папка сохранения ===
+        save_frame = ctk.CTkFrame(
+            main_frame,
+            fg_color="#1C1C1E",
+            corner_radius=12,
+            border_width=1,
+            border_color="#2C2C2E"
+        )
+        save_frame.pack(fill="x", pady=(0, 15), ipady=8)
+
+        self.save_to_source_var = ctk.BooleanVar(value=True)
+        self.save_mode_cb = ctk.CTkCheckBox(
+            save_frame,
+            text="Сохранять в папку исходного файла",
+            variable=self.save_to_source_var,
+            command=self._toggle_save_mode,
+            font=ctk.CTkFont(size=13),
+            text_color="#E5E5EA",
+            fg_color="#0A84FF",
+            hover_color="#007AFF",
+            border_color="#8E8E93"
+        )
+        self.save_mode_cb.pack(side="left", padx=(15, 20))
+
+        self.custom_save_dir = ""
+        self.btn_select_save_dir = ctk.CTkButton(
+            save_frame,
+            text="Выбрать папку...",
+            command=self._select_save_dir,
+            state="disabled",
+            width=130,
+            height=32,
+            fg_color="#2C2C2E",
+            hover_color="#3A3A3C",
+            text_color="#FFFFFF"
+        )
+        self.btn_select_save_dir.pack(side="left", padx=(0, 15))
+
+        self.lbl_save_dir = ctk.CTkLabel(
+            save_frame,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color="#8E8E93"
+        )
+        self.lbl_save_dir.pack(side="left", fill="x", expand=True, padx=(0, 15))
+
         # === Прогресс-бар ===
         progress_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         progress_frame.pack(fill="x", pady=(5, 10))
@@ -308,6 +356,27 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
             corner_radius=8,
         )
         self.btn_convert.pack(fill="x", pady=(10, 0))
+
+    def _toggle_save_mode(self):
+        if self.save_to_source_var.get():
+            self.btn_select_save_dir.configure(state="disabled")
+            self.lbl_save_dir.configure(text="")
+        else:
+            self.btn_select_save_dir.configure(state="normal")
+            if not self.custom_save_dir:
+                self._select_save_dir()
+            else:
+                self.lbl_save_dir.configure(text=self.custom_save_dir)
+
+    def _select_save_dir(self):
+        folder = filedialog.askdirectory(title="Выберите папку для сохранения")
+        if folder:
+            self.custom_save_dir = folder
+            self.lbl_save_dir.configure(text=folder)
+        else:
+            if not self.custom_save_dir:
+                self.save_to_source_var.set(True)
+                self._toggle_save_mode()
 
     def _on_drag_enter(self, event):
         """Подсветка зоны при перетаскивании."""
@@ -456,108 +525,152 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
 
     # ─── Конвертация ───
     def _start_conversion(self):
-        """Запуск конвертации в отдельном потоке."""
+        """Запуск конвертации в пуле потоков или отмена."""
         if self._is_converting:
+            self.cancel_event.set()
+            self.btn_convert.configure(state="disabled", text="Отменяем...")
             return
+            
         if not self.file_queue:
             self._set_status("Очередь пуста — добавьте файлы.")
             return
+            
         self._is_converting = True
+        self.cancel_event.clear()
         self._conversion_log.clear()
         self._refresh_log_view()
-        self.btn_convert.configure(state="disabled", text="Конвертация…")
+        
+        self.btn_convert.configure(text="Отмена", fg_color="#FF3B30", hover_color="#FF453A")
         self.btn_files.configure(state="disabled")
         self.btn_folder.configure(state="disabled")
         self.btn_clear.configure(state="disabled")
-        thread = threading.Thread(target=self._conversion_worker, daemon=True)
+        
+        thread = threading.Thread(target=self._conversion_master, daemon=True)
         thread.start()
 
-    def _conversion_worker(self):
-        """Фоновый поток конвертации."""
+    def _conversion_master(self):
+        """Управляющий поток для пула конвертации."""
         total = len(self.file_queue)
-        success = 0
-        errors = 0
+        self.success_count = 0
+        self.error_count = 0
+        self.processed_count = 0
         
         format_mode = self.format_var.get()
         use_smart_rename = self.rename_var.get()
         ext = f".{format_mode}"
+        save_dir = None if self.save_to_source_var.get() else self.custom_save_dir
 
-        for idx, file_path in enumerate(self.file_queue):
-            basename = os.path.basename(file_path)
-            progress = idx / total
-            percent_text = f"{int(progress * 100)}%"
-            self.after(0, self.progress_bar.set, progress)
-            self.after(0, self.progress_label.configure, {"text": percent_text})
-            self.after(0, self._set_status,
-                       f"[{idx+1}/{total}] Обработка: {basename}")
-
-            try:
-                # Валидация пути
-                if not os.path.isfile(file_path):
-                    raise FileNotFoundError(f"Файл не найден: {file_path}")
-                if not os.access(file_path, os.R_OK):
-                    raise PermissionError(f"Нет доступа для чтения: {file_path}")
-                out_dir = os.path.dirname(file_path)
-                if not os.access(out_dir, os.W_OK):
-                    raise PermissionError(f"Нет доступа для записи в папку: {out_dir}")
-
-                # Определяем конвертер
-                converter = self._get_converter(file_path)
-                if converter is None:
-                    raise ValueError(f"Формат не поддерживается: {basename}")
-
-                # Извлечение метаданных (если включено переименование)
-                author, title = None, None
-                if use_smart_rename:
-                    self.after(0, self._set_status, f"[{idx+1}/{total}] Извлечение метаданных: {basename}")
-                    author, title = extract_metadata(file_path)
-
-                # Конвертация
-                self.after(0, self._set_status, f"[{idx+1}/{total}] Конвертация: {basename}")
-                raw_text = converter(file_path, format_mode=format_mode)
-                cleaned = clean_text(raw_text)
-
-                # Сохранение
-                save_path = safe_save_path(file_path, author=author, title=title, ext=ext)
-                with open(save_path, 'w', encoding='utf-8') as out:
-                    out.write(cleaned)
-
-                # Валидация полноты конвертации
-                source_size = os.path.getsize(file_path)
-                text_size = os.path.getsize(save_path)
+        workers = max(1, os.cpu_count() - 1) if os.cpu_count() else 4
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(self._process_single_file, idx, file_path, format_mode, use_smart_rename, ext, save_dir): idx
+                for idx, file_path in enumerate(self.file_queue)
+            }
+            
+            for future in concurrent.futures.as_completed(futures):
+                idx = futures[future]
+                try:
+                    res = future.result()
+                    if res:
+                        self.success_count += 1
+                except InterruptedError:
+                    pass
+                except Exception as e:
+                    self.error_count += 1
                 
-                # Эвристика: если файл > 50KB, а текст меньше 2% от размера И меньше 3000 байт
-                # (EPUB/MOBI/FB2 могут содержать много картинок, но текст должен быть)
-                if source_size > 50 * 1024 and text_size < source_size * 0.02 and text_size < 3000:
-                    raise ValueError(f"Конвертация неполная (извлечено всего {text_size} байт из {source_size // 1024} KB). Возможно, повреждённая структура или DRM.")
+                self.processed_count += 1
+                progress = self.processed_count / total
+                percent_text = f"{int(progress * 100)}%"
+                self.after(0, self.progress_bar.set, progress)
+                self.after(0, self.progress_label.configure, {"text": percent_text})
                 
-                if text_size == 0:
-                    raise ValueError("Не удалось извлечь текст (результат пуст).")
+                if self.cancel_event.is_set():
+                    # При отмене прекращаем обработку новых задач
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break
 
-                success += 1
-                saved_name = os.path.basename(save_path)
-                self.after(0, self._log_to_queue, idx, f"{basename} (Готово)")
-                self.after(0, self._add_log_entry,
-                           f"Успех: {basename} → {saved_name}")
+        if not self.cancel_event.is_set():
+            self.after(0, self.progress_bar.set, 1.0)
+            self.after(0, self.progress_label.configure, {"text": "100%"})
 
-            except Exception as e:
-                errors += 1
-                err_msg = str(e)[:150]
-                self.after(0, self._log_to_queue, idx, f"{basename} (Ошибка)")
-                self.after(0, self._add_log_entry,
-                           f"Ошибка: {basename}: {err_msg}")
-
-        # Завершение
-        self.after(0, self.progress_bar.set, 1.0)
-        self.after(0, self.progress_label.configure, {"text": "100%"})
-
-        if errors == 0:
-            final_msg = f"Готово! Все {success} файл(ов) успешно конвертированы."
+        if self.cancel_event.is_set():
+            final_msg = f"Отменено. Успешно: {self.success_count}, ошибок: {self.error_count} из {total}."
+        elif self.error_count == 0:
+            final_msg = f"Готово! Все {self.success_count} файл(ов) успешно конвертированы."
         else:
-            final_msg = (f"Завершено. Успешно: {success}, "
-                         f"ошибок: {errors} из {total}.")
+            final_msg = f"Завершено. Успешно: {self.success_count}, ошибок: {self.error_count} из {total}."
+            
         self.after(0, self._set_status, final_msg)
         self.after(0, self._conversion_done)
+
+    def _process_single_file(self, idx: int, file_path: str, format_mode: str, use_smart_rename: bool, ext: str, save_dir: str):
+        """Задача для рабочего потока в пуле."""
+        if self.cancel_event.is_set():
+            raise InterruptedError()
+            
+        basename = os.path.basename(file_path)
+        self.after(0, self._set_status, f"[{self.processed_count+1}/{len(self.file_queue)}] Обработка: {basename}")
+
+        try:
+            if not os.path.isfile(file_path):
+                raise FileNotFoundError(f"Файл не найден: {file_path}")
+            if not os.access(file_path, os.R_OK):
+                raise PermissionError(f"Нет доступа для чтения: {file_path}")
+                
+            out_dir = save_dir if save_dir else os.path.dirname(file_path)
+            if not os.path.exists(out_dir):
+                raise FileNotFoundError(f"Папка сохранения не существует: {out_dir}")
+            if not os.access(out_dir, os.W_OK):
+                raise PermissionError(f"Нет доступа для записи в папку: {out_dir}")
+
+            converter = self._get_converter(file_path)
+            if converter is None:
+                raise ValueError(f"Формат не поддерживается: {basename}")
+
+            author, title = None, None
+            if use_smart_rename:
+                self.after(0, self._set_status, f"[{self.processed_count+1}/{len(self.file_queue)}] Метаданные: {basename}")
+                author, title = extract_metadata(file_path)
+
+            if self.cancel_event.is_set():
+                raise InterruptedError()
+
+            self.after(0, self._set_status, f"[{self.processed_count+1}/{len(self.file_queue)}] Конвертация: {basename}")
+            raw_text = converter(file_path, format_mode=format_mode, cancel_event=self.cancel_event)
+            
+            if self.cancel_event.is_set():
+                raise InterruptedError()
+                
+            cleaned = clean_text(raw_text)
+
+            save_path = safe_save_path(file_path, author=author, title=title, ext=ext, out_dir=out_dir)
+            with open(save_path, 'w', encoding='utf-8') as out:
+                out.write(cleaned)
+
+            source_size = os.path.getsize(file_path)
+            text_size = os.path.getsize(save_path)
+            
+            if source_size > 50 * 1024 and text_size < source_size * 0.02 and text_size < 3000:
+                raise ValueError(f"Конвертация неполная (извлечено всего {text_size} байт). Возможно, повреждённая структура или DRM.")
+            
+            if text_size == 0:
+                raise ValueError("Не удалось извлечь текст (результат пуст).")
+
+            saved_name = os.path.basename(save_path)
+            self.after(0, self._log_to_queue, idx, f"{basename} (Готово)")
+            self.after(0, self._add_log_entry, f"Успех: {basename} → {saved_name}")
+            return True
+
+        except InterruptedError:
+            self.after(0, self._log_to_queue, idx, f"{basename} (Отменено)")
+            self.after(0, self._add_log_entry, f"Отменено: {basename}")
+            raise
+        except Exception as e:
+            err_msg = str(e)[:150]
+            self.after(0, self._log_to_queue, idx, f"{basename} (Ошибка)")
+            self.after(0, self._add_log_entry, f"Ошибка: {basename}: {err_msg}")
+            raise
 
     def _log_to_queue(self, index: int, message: str):
         """Обновление строки в текстовом поле очереди."""
@@ -572,7 +685,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
     def _conversion_done(self):
         """Разблокировка интерфейса после завершения."""
         self._is_converting = False
-        self.btn_convert.configure(state="normal", text="Конвертировать")
+        self.btn_convert.configure(state="normal", text="Конвертировать", fg_color="#0A84FF", hover_color="#007AFF")
         self.btn_files.configure(state="normal")
         self.btn_folder.configure(state="normal")
         self.btn_clear.configure(state="normal")

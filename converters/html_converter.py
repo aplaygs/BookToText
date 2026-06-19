@@ -46,10 +46,21 @@ def html_to_markdown(tag) -> str:
     return children_text
 
 
-def convert_html(file_path: str, format_mode: str = 'txt') -> str:
+def convert_html(file_path: str, format_mode: str = 'txt', cancel_event=None) -> str:
     """Конвертация HTML/HTM в чистый текст или Markdown."""
-    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-        content = f.read()
+    try:
+        import charset_normalizer
+        with open(file_path, 'rb') as f:
+            rawdata = f.read()
+        best_match = charset_normalizer.from_bytes(rawdata).best()
+        encoding = best_match.encoding if best_match else 'utf-8'
+        content = rawdata.decode(encoding, errors='replace')
+    except ImportError:
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read()
+            
+    if cancel_event and cancel_event.is_set():
+        raise InterruptedError("Отменено пользователем")
     
     soup = BeautifulSoup(content, 'html.parser')
     

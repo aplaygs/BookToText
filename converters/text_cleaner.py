@@ -37,14 +37,14 @@ def clean_text(text: str) -> str:
     return result
 
 
-def safe_save_path(original_path: str, author: str = None, title: str = None, ext: str = ".txt") -> str:
+def safe_save_path(original_path: str, author: str = None, title: str = None, ext: str = ".txt", out_dir: str = None) -> str:
     """Генерирует путь для сохранения файла с умным переименованием.
 
     Если заданы author и/или title, формирует имя 'Имя Автора - Название Книги.ext'.
     Если файл с таким именем существует — добавляет _1, _2 и т.д.
     Корректно обрабатывает двойные расширения (.fb2.zip).
     """
-    directory = os.path.dirname(original_path)
+    directory = out_dir if out_dir else os.path.dirname(original_path)
     
     if author and title:
         basename = f"{author} - {title}"

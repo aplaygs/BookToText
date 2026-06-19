@@ -5,8 +5,11 @@ from bs4 import BeautifulSoup
 from .html_converter import html_to_markdown
 
 
-def convert_mobi(file_path: str, format_mode: str = 'txt') -> str:
+def convert_mobi(file_path: str, format_mode: str = 'txt', cancel_event=None) -> str:
     """Конвертация MOBI/AZW3 в текст или Markdown (только незащищённые DRM книги)."""
+    if cancel_event and cancel_event.is_set():
+        raise InterruptedError("Отменено пользователем")
+        
     # mobi.extract() распаковывает во временную директорию
     with tempfile.TemporaryDirectory() as tmpdir:
         tempdir, extracted_file = mobi.extract(file_path)
