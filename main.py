@@ -85,7 +85,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
 
         header = ctk.CTkLabel(
             header_frame,
-            text="📚 BookToText",
+            text="BookToText",
             font=ctk.CTkFont(size=34, weight="bold"),
             text_color="#FFFFFF",
         )
@@ -119,7 +119,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
         
         self.dnd_label = ctk.CTkLabel(
             self.dnd_frame,
-            text="📥 Перетащите файлы или папки сюда",
+            text="Перетащите файлы или папки сюда",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color="#8E8E93"
         )
@@ -139,7 +139,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
 
         self.btn_files = ctk.CTkButton(
             btn_frame,
-            text="📄 Выбрать файлы",
+            text="Выбрать файлы",
             command=self._select_files,
             width=180,
             height=40,
@@ -153,7 +153,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
 
         self.btn_folder = ctk.CTkButton(
             btn_frame,
-            text="📁 Выбрать папку",
+            text="Выбрать папку",
             command=self._select_folder,
             width=180,
             height=40,
@@ -167,7 +167,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
 
         self.btn_clear = ctk.CTkButton(
             btn_frame,
-            text="🗑 Очистить",
+            text="Очистить",
             command=self._clear_queue,
             width=120,
             height=40,
@@ -300,14 +300,14 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
             main_frame,
             text="Конвертировать",
             command=self._start_conversion,
-            height=50,
-            font=ctk.CTkFont(size=18, weight="bold"),
+            height=44,
+            font=ctk.CTkFont(size=15, weight="bold"),
             fg_color="#0A84FF",
             hover_color="#007AFF",
             text_color="#FFFFFF",
-            corner_radius=12,
+            corner_radius=8,
         )
-        self.btn_convert.pack(fill="x")
+        self.btn_convert.pack(fill="x", pady=(10, 0))
 
     def _on_drag_enter(self, event):
         """Подсветка зоны при перетаскивании."""
@@ -343,7 +343,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
             if valid_paths:
                 self._add_to_queue(valid_paths)
             else:
-                self._set_status("⚠️  В перетащенных данных нет поддерживаемых файлов.")
+                self._set_status("В перетащенных данных нет поддерживаемых файлов.")
 
     # ─── Выбор файлов ───
     def _select_files(self):
@@ -381,7 +381,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
         if found:
             self._add_to_queue(found)
         else:
-            self._set_status("⚠️  В выбранной папке не найдено поддерживаемых файлов.")
+            self._set_status("В выбранной папке не найдено поддерживаемых файлов.")
 
     def _add_to_queue(self, paths: list[str]):
         """Добавление файлов в очередь без дублей."""
@@ -393,7 +393,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
                 existing.add(p)
                 added += 1
         self._refresh_queue_view()
-        self._set_status(f"➕  Добавлено: {added}. Всего в очереди: {len(self.file_queue)}.")
+        self._set_status(f"Добавлено: {added}. Всего в очереди: {len(self.file_queue)}.")
 
     def _clear_queue(self):
         """Очистка очереди."""
@@ -403,7 +403,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
         self._refresh_log_view()
         self.progress_bar.set(0)
         self.progress_label.configure(text="0%")
-        self._set_status("🗑  Очередь очищена.")
+        self._set_status("Очередь очищена.")
 
     def _refresh_queue_view(self):
         """Обновление текстового поля с очередью."""
@@ -460,12 +460,12 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
         if self._is_converting:
             return
         if not self.file_queue:
-            self._set_status("⚠️  Очередь пуста — добавьте файлы.")
+            self._set_status("Очередь пуста — добавьте файлы.")
             return
         self._is_converting = True
         self._conversion_log.clear()
         self._refresh_log_view()
-        self.btn_convert.configure(state="disabled", text="⏳  Конвертация…")
+        self.btn_convert.configure(state="disabled", text="Конвертация…")
         self.btn_files.configure(state="disabled")
         self.btn_folder.configure(state="disabled")
         self.btn_clear.configure(state="disabled")
@@ -489,7 +489,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
             self.after(0, self.progress_bar.set, progress)
             self.after(0, self.progress_label.configure, {"text": percent_text})
             self.after(0, self._set_status,
-                       f"⏳  [{idx+1}/{total}] Обработка: {basename}")
+                       f"[{idx+1}/{total}] Обработка: {basename}")
 
             try:
                 # Валидация пути
@@ -509,11 +509,11 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
                 # Извлечение метаданных (если включено переименование)
                 author, title = None, None
                 if use_smart_rename:
-                    self.after(0, self._set_status, f"⏳  [{idx+1}/{total}] Извлечение метаданных: {basename}")
+                    self.after(0, self._set_status, f"[{idx+1}/{total}] Извлечение метаданных: {basename}")
                     author, title = extract_metadata(file_path)
 
                 # Конвертация
-                self.after(0, self._set_status, f"⏳  [{idx+1}/{total}] Конвертация: {basename}")
+                self.after(0, self._set_status, f"[{idx+1}/{total}] Конвертация: {basename}")
                 raw_text = converter(file_path, format_mode=format_mode)
                 cleaned = clean_text(raw_text)
 
@@ -536,25 +536,25 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
 
                 success += 1
                 saved_name = os.path.basename(save_path)
-                self.after(0, self._log_to_queue, idx, f"✅ {basename}")
+                self.after(0, self._log_to_queue, idx, f"{basename} (Готово)")
                 self.after(0, self._add_log_entry,
-                           f"✅ {basename} → {saved_name}")
+                           f"Успех: {basename} → {saved_name}")
 
             except Exception as e:
                 errors += 1
                 err_msg = str(e)[:150]
-                self.after(0, self._log_to_queue, idx, f"❌ {basename}")
+                self.after(0, self._log_to_queue, idx, f"{basename} (Ошибка)")
                 self.after(0, self._add_log_entry,
-                           f"❌ {basename}: {err_msg}")
+                           f"Ошибка: {basename}: {err_msg}")
 
         # Завершение
         self.after(0, self.progress_bar.set, 1.0)
         self.after(0, self.progress_label.configure, {"text": "100%"})
 
         if errors == 0:
-            final_msg = f"🎉  Готово! Все {success} файл(ов) успешно конвертированы."
+            final_msg = f"Готово! Все {success} файл(ов) успешно конвертированы."
         else:
-            final_msg = (f"✅  Завершено. Успешно: {success}, "
+            final_msg = (f"Завершено. Успешно: {success}, "
                          f"ошибок: {errors} из {total}.")
         self.after(0, self._set_status, final_msg)
         self.after(0, self._conversion_done)
@@ -572,7 +572,7 @@ class BookToTextApp(ctk.CTk, TkinterDnD.DnDWrapper):
     def _conversion_done(self):
         """Разблокировка интерфейса после завершения."""
         self._is_converting = False
-        self.btn_convert.configure(state="normal", text="▶   Конвертировать")
+        self.btn_convert.configure(state="normal", text="Конвертировать")
         self.btn_files.configure(state="normal")
         self.btn_folder.configure(state="normal")
         self.btn_clear.configure(state="normal")
